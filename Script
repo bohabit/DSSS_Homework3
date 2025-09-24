@@ -1,0 +1,102 @@
+# === Schritt 0: Bibliotheken importieren ===
+# Wir importieren zuerst alle "Werkzeuge" (Bibliotheken), die wir für unser Skript benötigen.
+
+import os  # 'os' steht für "Operating System".
+import json  # 'json' zum Arbeiten mit dem JSON-Datenformat.
+import random  # 'random' für die zufällige Auswahl.
+import numpy as np  # 'numpy' ist eine fundamentale Bibliothek für wissenschaftliches Rechnen.
+# Wir benötigen sie, um das Maskenbild in ein Array umzuwandeln und es zu bearbeiten.
+# 'np' ist die übliche Abkürzung.
+
+from PIL import Image  # 'PIL' (Pillow) zum Öffnen und Laden von Bildern.
+
+import matplotlib.pyplot as plt  # 'matplotlib' zum Erstellen von Diagrammen und Grafiken.
+
+# === Schritt 1: Pfade zum Datensatz definieren ===
+base_path = 'Mini_BAGLS_dataset'  # Der relative Pfad zu unserem Datenordner.
+
+# === Schritt 2: Vier zufällige Bilddateien auswählen ===
+try:
+    all_files = os.listdir(base_path)
+    base_images = [f for f in all_files if f.endswith('.png') and '_seg' not in f]
+
+    if len(base_images) < 4:
+        print("Warnung: Weniger als 4 Bilder im Ordner gefunden. Lade alle verfügbaren Bilder.")
+        selected_files = base_images
+    else:
+        selected_files = random.sample(base_images, 4)
+
+except FileNotFoundError:
+    print(f"Fehler: Der Ordner '{base_path}' wurde nicht gefunden.")
+    selected_files = []
+
+# === Schritt 3: Daten laden, verarbeiten und anzeigen ===
+if selected_files:
+    # Wir erstellen ein 2x2 Gitter für unsere vier Bilder.
+    # figsize passt die Gesamtgröße des Fensters an.
+    fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+
+    # Haupttitel für das gesamte Fenster.
+    fig.suptitle('Bilder mit überlagerten Segmentierungsmasken', fontsize=16)
+
+    # Wir durchlaufen jetzt die vier ausgewählten Dateinamen und die vier Subplot-Achsen gleichzeitig.
+    # axes.flatten() macht aus dem 2x2 Gitter eine einfache Liste von 4 Achsen, was die Schleife vereinfacht.
+    for ax, file_name in zip(axes.flatten(), selected_files):
+
+        base_name = os.path.splitext(file_name)[0]
+
+        image_path = os.path.join(base_path, file_name)
+        mask_path = os.path.join(base_path, f"{base_name}_seg.png")
+        metadata_path = os.path.join(base_path, f"{base_name}.meta")
+
+        try:
+            image = Image.open(image_path)
+            # Wir konvertieren die Maske in den 'L'-Modus (Luminanz/Graustufen), um sicherzustellen, dass sie nur einen Kanal hat.
+            mask = Image.open(mask_path).convert('L')
+
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+
+            # --- NEUER TEIL: Maske für die Überlagerung vorbereiten ---
+
+            # 1. Wir wandeln das Pillow-Maskenbild in ein NumPy-Array um.
+            #    Das Array enthält die Pixelwerte (0 für schwarz, 255 für weiß).
+            mask_array = np.array(mask)
+
+            # 2. Wir erstellen eine "maskierte" Version des Arrays.
+            #    np.ma.masked_where(Bedingung, Array) macht alle Pixel transparent, bei denen die Bedingung zutrifft.
+            #    Unsere Bedingung ist 'mask_array == 0', also werden alle schwarzen Pixel (Hintergrund) unsichtbar.
+            masked_mask = np.ma.masked_where(mask_array == 0, mask_array)
+
+            # --- Konsolenausgabe zur Überprüfung ---
+            print(f"--- Verarbeite: {file_name} ---")
+
+            # --- Bilder und Maske im Plot anzeigen ---
+
+            # 1. Zuerst zeichnen wir das Originalbild als Hintergrund.
+            ax.imshow(image)
+
+            # 2. Darüber zeichnen wir die bearbeitete Maske.
+            #    - cmap='autumn': Eine Farbtabelle, die die Maske in Gelb- und Rottönen anzeigt.
+            #    - alpha=0.6: Setzt die Transparenz auf 60%, damit das unterliegende Bild sichtbar bleibt.
+            ax.imshow(masked_mask, cmap='autumn', alpha=0.6)
+
+            # 3. Wir holen den Titel aus den Metadaten.
+            #    .get() ist sicher: Wenn der Schlüssel nicht existiert, gibt es 'Status unbekannt' zurück.
+            title = metadata.get('Subject disorder status', 'Status unbekannt')
+            ax.set_title(title, fontsize=12)  # Titel für diesen spezifischen Subplot setzen.
+
+            # 4. Wir schalten die Achsenbeschriftungen aus.
+            ax.axis('off')
+
+        except FileNotFoundError as e:
+            print(f"Fehler beim Laden von '{e.filename}'. Stelle sicher, dass alle zugehörigen Dateien existieren.")
+        except Exception as e:
+            print(f"Ein unerwarteter Fehler ist aufgetreten bei Datei {file_name}: {e}")
+
+    # plt.tight_layout() passt die Abstände zwischen den Bildern automatisch an.
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    # Das Fenster mit den fertigen Plots anzeigen.
+    plt.show()
+
